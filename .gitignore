@@ -1,0 +1,81 @@
+# Node.js
+node_modules/
+
+# Build artifacts
+dist/
+.next/
+out/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS specific files
+.DS_Store
+.env
+.env.*
+
+# IDE
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+
+# System Files
+*.swp
+*.swo
+*~
+
+# Test Coverage
+coverage/
+
+# Docker
+Dockerfile
+docker-compose.yml
+docker-compose.override.yml
+
+# AWS
+.aws/
+cdk.out/
+
+# Temporary files
+.tmp/
+temp/
+tmp/
+
+# Secrets - DO NOT COMMIT THESE
+.env.local
+
+# Database
+*.sqlite3
+*.db
+.pgpass
+
+# NestJS artifacts
+nest-cli.json
+.nest-update.json
+
+# IDE Specific
+*.code-workspace
+
+# IDE (VSCode)
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Yarn
+.yarn/*
+!.yarn/patches
+!.yarn/releases
+!.yarn/plugins
+yarn-error.log*
+
+# Package lock files (Yarn and npm)
+package-lock.json
+yarn.lock
+
+# Ignore all .js files except those in /src
+# !/src/**/*.js

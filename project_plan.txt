@@ -1,0 +1,310 @@
+# Project Plan: EchoPlex - Real-time Event Planning Platform
+
+## 1. Introduction and Overview
+
+EchoPlex is a real-time event planning platform designed to streamline event management for organizers and attendees. It aims to provide a user-friendly interface, robust event analytics, and seamless integration with popular payment gateways, facilitating efficient event creation, promotion, registration, and attendance tracking. The platform will support both web and potentially mobile interfaces (via responsive design for web first).
+
+## 2. System Architecture
+
+The system will follow a well-modularized monolithic architecture in its initial phase, allowing for quicker development and deployment while maintaining clear separation of concerns. This approach provides flexibility for future decomposition into microservices if scalability demands it.
+
+**Key Architectural Decisions:**
+*   **Frontend:** Single Page Application (SPA) using React.js.
+*   **Backend:** Node.js with NestJS framework for a structured, modular, and scalable API.
+*   **Database:** PostgreSQL for transactional data, chosen for its strong consistency, reliability, and support for complex queries.
+*   **Real-time Communication:** WebSocket layer (e.g., Socket.io) for real-time updates (e.g., ticket availability, live chat if implemented, event status changes).
+*   **Payment Gateway Integration:** Stripe API for secure and seamless payment processing.
+*   **Containerization:** Docker for consistent development and deployment environments.
+*   **Cloud Provider:** AWS for robust, scalable infrastructure services.
+
+## 3. Core Components
+
+### 3.1. User Management Module
+
+*   **Core Functionality:**
+    *   User registration (Organizer, Attendee roles).
+    *   User authentication (email/password, potentially OAuth later).
+    *   User profiles (name, contact info, profile picture).
+    *   Role-Based Access Control (RBAC) to differentiate organizer and attendee functionalities.
+    *   Password forgotten/reset functionality.
+*   **Technical Design & Architecture:**
+    *   RESTful API endpoints (`/api/users`, `/api/auth`).
+    *   JWT (JSON Web Tokens) for authentication.
+    *   Bcrypt for password hashing.
+    *   NestJS services for user logic, tied to PostgreSQL User table.
+*   **User Experience:**
+    *   Clear registration/login forms.
+    *   Dashboard views tailored to user role.
+*   **Data Management:**
+    *   `users` table: `id (PK)`, `email (unique)`, `password_hash`, `first_name`, `last_name`, `role (enum: 'organizer', 'attendee')`, `created_at`, `updated_at`.
+*   **Error Handling & Edge Cases:**
+    *   Invalid credentials, duplicate email registration, weak passwords.
+    *   Graceful error messages to the frontend.
+*   **Security Considerations:**
+    *   Secure password storage (hashing and salt).
+    *   JWT token expiration and refresh mechanisms.
+    *   Input validation to prevent injection attacks.
+*   **Test-Driven Development Verification:**
+    *   **Immediate Verification:** Manually try registering and logging in through Swagger UI or Postman.
+    *   **Unit Tests:**
+        *   Test `UserService.create()`: Verify user creation with valid data, duplicate email handling.
+        *   Test `AuthService.validateUser()`: Verify correct and incorrect password validation.
+        *   Test password hashing utility.
+    *   **Integration Tests:**
+        *   Test `POST /api/auth/register` and `POST /api/auth/login` endpoints: Verify successful user registration and token issuance, and error cases for invalid input.
+    *   **Mocking Strategy:** Mock the `UserRepository` to isolate service logic without hitting the actual database. For integration tests, use an in-memory PostgreSQL database (e.g., `pg-mem` or a test container).
+
+### 3.2. Event Management Module
+
+*   **Core Functionality:**
+    *   Organizers can create, edit, publish/unpublish, and delete events.
+    *   Event details: name, description, date/time, location, capacity, categories, images.
+    *   Attendees can browse and search for events.
+    *   Real-time updates for event status (e.g., "Sold Out", "Cancelled").
+*   **Technical Design & Architecture:**
+    *   RESTful API endpoints (`/api/events`).
+    *   NestJS services handle event CRUD operations, interacting with the `events` table.
+    *   WebSockets for pushing real-time updates to subscribed attendees/organizers (e.g., remaining tickets).
+*   **User Experience:**
+    *   Intuitive forms for event creation/editing.
+    *   Search and filter options for events.
+    *   Clear event detail pages.
+*   **Data Management:**
+    *   `events` table: `id (PK)`, `organizer_id (FK to users.id)`, `name`, `description`, `start_time`, `end_time`, `location`, `capacity`, `current_attendees`, `status (enum: 'draft', 'published', 'cancelled')`, `created_at`, `updated_at`.
+*   **Error Handling & Edge Cases:**
+    *   Invalid event dates (e.g., end_time before start_time).
+    *   Capacity limits enforcement.
+    *   Unauthorized access for event modification.
+*   **Security Considerations:**
+    *   Ensure only event organizers can modify their own events.
+    *   Input validation for all event fields.
+*   **Test-Driven Development Verification:**
+    *   **Immediate Verification:** Manually create an event via the UI or Postman, then verify its presence.
+    *   **Unit Tests:**
+        *   Test `EventService.createEvent()`: Valid input, invalid date range.
+        *   Test `EventService.updateEvent()`: Only owner can update, invalid status transitions.
+    *   **Integration Tests:**
+        *   `POST /api/events`: Verify event creation with valid organizer token.
+        *   `PUT /api/events/:id`: Verify unauthorized update attempt.
+        *   `GET /api/events` with search/filter parameters.
+    *   **Mocking Strategy:** Mock `EventRepository` and `UserRepository` within service tests. For integration tests, use an in-memory database or test container.
+
+### 3.3. Ticketing and Registration Module
+
+*   **Core Functionality:**
+    *   Create multiple ticket types per event (e.g., VIP, General Admission, Early Bird).
+    *   Set ticket prices, quantities, and sales periods.
+    *   Attendees can register for events by selecting ticket types.
+    *   Track registered attendees and remaining ticket quantities in real-time.
+    *   Generate unique registration confirmation codes/IDs.
+*   **Technical Design & Architecture:**
+    *   RESTful API endpoints (`/api/events/:id/tickets`, `/api/registrations`).
+    *   Transactional integrity for ticket purchase (decrement quantity, create registration).
+    *   WebSockets for real-time ticket availability updates published whenever a ticket is purchased or released.
+*   **User Experience:**
+    *   Clear presentation of ticket types and prices.
+    *   Guided registration flow.
+    *   Instant confirmation.
+*   **Data Management:**
+    *   `ticket_types` table: `id (PK)`, `event_id (FK)`, `name`, `description`, `price`, `total_quantity`, `available_quantity`.
+    *   `registrations` table: `id (PK)`, `user_id (FK)`, `event_id (FK)`, `ticket_type_id (FK)`, `registration_code (unique)`, `status (enum: 'pending', 'confirmed', 'cancelled')`, `registered_at`.
+*   **Error Handling & Edge Cases:**
+    *   Attempting to register for a sold-out event.
+    *   Concurrent ticket purchases (race conditions) handled using database transactions and locking mechanisms (e.g., `FOR UPDATE` in PG).
+    *   Attempting to register for an event that has passed or is not yet open for registration.
+*   **Security Considerations:**
+    *   Prevent double registration for the same event/ticket type unless explicitly allowed.
+    *   Ensure transaction atomicity for ticket purchases.
+*   **Test-Driven Development Verification:**
+    *   **Immediate Verification:** Manually try registering for an event, observe ticket count decrement.
+    *   **Unit Tests:**
+        *   Test `TicketService.createTicketType()`.
+        *   Test `RegistrationService.registerForEvent()`: Valid registration, sold-out scenario, invalid ticket type.
+        *   Test concurrency handling (simulated concurrent calls to `registerForEvent`).
+    *   **Integration Tests:**
+        *   `POST /api/registrations`: Simulate a full registration flow, including payment (mocked).
+        *   Verify ticket quantity decrement on successful registration.
+        *   Test race condition simulation for ticket purchase.
+    *   **Mocking Strategy:** Mock `TicketTypeRepository` and `RegistrationRepository`. For concurrency, use database transactions properly.
+
+### 3.4. Payment Processing Module
+
+*   **Core Functionality:**
+    *   Integrate with Stripe for secure credit card processing.
+    *   Handle payment initiation, success, and failure callbacks.
+    *   Record payment transaction details.
+    *   Refund processing capability (for organizers).
+*   **Technical Design & Architecture:**
+    *   Server-side creates Stripe `PaymentIntent`.
+    *   Client-side confirms the `PaymentIntent`.
+    *   Webhooks for Stripe callbacks (e.g., `payment_intent.succeeded`).
+*   **User Experience:**
+    *   Seamless redirection to Stripe's checkout or embedded elements.
+    *   Clear payment status feedback.
+*   **Data Management:**
+    *   `payments` table: `id (PK)`, `registration_id (FK)`, `stripe_charge_id`, `amount`, `currency`, `status (enum: 'pending', 'succeeded', 'failed', 'refunded')`, `created_at`.
+*   **Error Handling & Edge Cases:**
+    *   Payment failures (insufficient funds, card declined).
+    *   Network issues during payment processing.
+    *   Stripe webhook processing failures (retry mechanism).
+*   **Security Considerations:**
+    *   PCI compliance (Stripe handles sensitive card data, minimizing our exposure).
+    *   Webhook signature verification to prevent spoofing.
+    *   Encrypt sensitive payment-related data at rest (though minimizing what we store is best).
+*   **Test-Driven Development Verification:**
+    *   **Immediate Verification:** Use Stripe test cards to manually complete a payment.
+    *   **Unit Tests:**
+        *   Test `PaymentService.createPaymentIntent()`: Correct parameters passed to Stripe API (mocked).
+        *   Test Stripe webhook handler logic (parsing event, updating `payment` and `registration` status).
+    *   **Integration Tests:**
+        *   Simulate a full payment flow using Stripe's test environment.
+        *   Test webhook endpoint with mocked Stripe events (using Stripe CLI for local testing).
+    *   **Mocking Strategy:** Mock Stripe SDK calls (`stripe.paymentIntents.create`, etc.). Use Stripe's test webhook events for integration testing.
+
+### 3.5. Event Analytics Module
+
+*   **Core Functionality:**
+    *   Track key event metrics for organizers: registrations over time, ticket sales by type, attendee demographics (if collected), page views.
+    *   Provide dashboards and reports.
+    *   Basic data aggregation within PostgreSQL.
+*   **Technical Design & Architecture:**
+    *   Data collection through backend services (e.g., incrementing counters on event/registration actions).
+    *   API endpoints to retrieve aggregated data for dashboards (`/api/analytics/events/:id/summary`).
+    *   PostgreSQL views or materialized views for pre-computed aggregates.
+*   **User Experience:**
+    *   Organizers' dashboard with charts and key performance indicators.
+*   **Data Management:**
+    *   Leverage existing tables (`events`, `registrations`, `ticket_types`).
+    *   Potentially aggregate tables or materialized views (`event_daily_stats`, `ticket_type_sales`).
+    *   Initial analytics will be SQL queries on the main transactional database.
+*   **Error Handling & Edge Cases:**
+    *   No data available for new events.
+    *   Handling large datasets (pagination, efficient queries).
+*   **Security Considerations:**
+    *   Ensure organizers can only view analytics for their own events.
+*   **Test-Driven Development Verification:**
+    *   **Immediate Verification:** Manually create events and registrations, then check if dashboard reflects basic counts.
+    *   **Unit Tests:**
+        *   Test aggregation functions or SQL queries for correctness with sample data.
+    *   **Integration Tests:**
+        *   `GET /api/analytics/events/:id/summary`: Verify basic counts and aggregated data correctness after performing various actions (creating registrations, sales).
+    *   **Mocking Strategy:** Use an in-memory database with seeded test data to verify analytical queries.
+
+## 4. Infrastructure and Deployment
+
+*   **Local Development:** Docker Compose for local setup (PostgreSQL, NestJS backend, React frontend via Webpack dev server).
+*   **CI/CD Pipeline:** GitHub Actions.
+    *   Automated testing on every push to `main` branch.
+    *   Automated Docker image building and pushing to AWS ECR.
+    *   Automated deployment to AWS Fargate (ECS) for seamless updates.
+*   **Cloud Services (AWS):**
+    *   **Compute:** AWS ECS Fargate for container orchestration (serverless containers).
+    *   **Database:** AWS RDS for PostgreSQL (managed database service).
+    *   **Networking:** AWS VPC, Load Balancer (ALB), Route 53 (DNS).
+    *   **Storage:** AWS S3 for static assets (images, frontend build).
+    *   **Security:** AWS IAM for access control, AWS WAF for web application firewall.
+*   **Deployment Strategy:** Blue/Green deployment or rolling updates via ECS for minimal downtime.
+
+## 5. Testing and Quality Assurance
+
+### 5.1. Testing Hierarchy
+
+1.  **Unit Tests (Jest for JS/TS, React Testing Library for React components):**
+    *   Focus on isolated functions, methods, and single-responsibility components.
+    *   **Simple Cases First:** Test pure functions, utility methods, and reducer logic.
+    *   **Happy Paths:** Test expected inputs and outputs.
+    *   **Real Objects First:** Avoid mocking when simpler to use the actual object (e.g., test a service that consumes another simple service directly).
+    *   **Mock only unavoidable dependencies:** I/O operations, external APIs, complex third-party modules.
+
+2.  **Integration Tests (Supertest for API, Testcontainers for Database):**
+    *   Test interactions between components (e.g., services and repositories, API endpoints and services).
+    *   **Minimal Setup:** Use in-memory databases (like `pg-mem` for PostgreSQL queries in some cases) or ephemeral database instances via Testcontainers.
+    *   Test actual API endpoints to ensure routing, middleware, and controller logic is correct.
+    *   Verify that data persistence layers correctly interact with mock or real (test container) databases.
+    *   Test WebSocket connections and real-time message handling.
+
+3.  **End-to-End (E2E) Tests (Cypress or Playwright):**
+    *   Focus on critical user journeys (e.g., Organizer: Create Event -> Create Ticket -> Attendee: Register for Event -> Pay).
+    *   Simulate real user interactions through the UI.
+    *   **Critical Paths Only:** Keep scenarios concise and high-value to maintain speed and reliability.
+    *   Run against a deployed test environment or local Docker Compose setup.
+
+### 5.2. Mocking Strategy - SIMPLIFIED APPROACH
+
+*   **Prefer Dependency Injection:** Design NestJS services to inject their dependencies (e.g., repositories, other services), which simplifies swapping out real implementations with fakes or stubs during testing.
+*   **Use Simple Stubs for Unit Tests:** For unit testing a service, provide simple stub objects for its dependencies that return predictable data, rather than complex mock frameworks unless behavior verification is truly necessary.
+*   **Mock at System Boundaries:**
+    *   **External APIs:** Mock `Stripe` SDK calls, `Socket.io` server emits.
+    *   **Database:** For unit tests, mock repository methods. For integration tests, use an actual database instance via `Testcontainers` or an in-memory alternative for faster feedback.
+    *   **File System/Environment Variables:** Stub these.
+*   **Avoid Mocking Internal Components:** Unless absolutely necessary due to complexity/performance, test internal interactions with real objects.
+
+### 5.3. Testing Tools & Frameworks
+
+*   **Backend (Node.js/NestJS):**
+    *   **Test Runner/Framework:** Jest
+    *   **HTTP Testing:** Supertest (for API integration tests)
+    *   **Database Testing:** Testcontainers (for spinning up real PostgreSQL instances for integration tests), `pg-mem` (for in-memory PostgreSQL emulation for faster unit/some integration tests on data access layer).
+    *   **Mocking:** Jest's built-in mocking capabilities.
+    *   **Common Test Patterns:**
+        *   `describe('UserService', () => { it('should create a user', () => { ... }); });`
+        *   `beforeAll`, `afterAll`, `beforeEach` for setup/teardown.
+        *   `expect(service.method()).resolves.toBe(...)` for async tests.
+*   **Frontend (React):**
+    *   **Test Runner/Framework:** Jest
+    *   **Component Testing:** React Testing Library (focus on user behavior, not implementation details).
+    *   **Mocking:** Jest, `msw` (for mocking API calls at the network level).
+    *   **Common Test Patterns:**
+        *   `render(<Component />)`
+        *   `screen.getByText`, `screen.getByRole`
+        *   `fireEvent.click`, `userEvent.type`
+        *   `expect(element).toBeInTheDocument()`
+*   **E2E Testing:**
+    *   **Framework:** Cypress or Playwright. (Cypress is often user-friendly for a first E2E setup).
+    *   **Common Test Patterns:**
+        *   `cy.visit()`, `cy.get().type()`, `cy.click()`, `cy.contains()`.
+
+### 5.4. Test Data Management
+
+*   **Unit Tests:** Inline test data, simple objects/arrays.
+*   **Integration Tests:**
+    *   Use database migrations/seeders to set up known baseline data before tests.
+    *   Transactional tests: Wrap each test in a database transaction that is rolled back at the end to ensure isolation.
+    *   Faker.js: Use to generate realistic but random test data for various scenarios.
+*   **E2E Tests:** API calls to create specific test data before a test run, or database seeding script for a dedicated E2E test environment.
+*   **Data Cleanup:** Scripts to tear down test databases/containers, or transaction rollbacks for integration tests.
+
+## 6. Monitoring & Logging
+
+*   **Logging:** Centralized structured logging (JSON format) using Winston (Node.js) or equivalent. Logs pushed to AWS CloudWatch Logs.
+*   **Monitoring:**
+    *   **Application Metrics:** Prometheus with Grafana for dashboards (CPU, memory, request rates, error rates, response times). Node.js `prom-client` library.
+    *   **Infrastructure Metrics:** AWS CloudWatch for ECS, RDS, ALB metrics.
+    *   **Alerting:** CloudWatch Alarms integrated with SNS for notifications (e.g., high error rates, low disk space, critical service downtime).
+    *   **Tracing:** OpenTelemetry for distributed tracing across services (if microservices adopted later). Initial phase will rely on structured logging and request IDs.
+*   **Health Checks:** `GET /health` endpoint for load balancers and container orchestration to check service availability.
+
+## 7. Dependencies
+
+*   **Backend:**
+    *   Node.js, NestJS, Express.js (underlying NestJS), PostgreSQL (`pg`), TypeORM/Prisma (ORM), Bcrypt, Jsonwebtoken, DTO/Class-validator, Winston (logging), Socket.io.
+    *   Stripe SDK.
+*   **Frontend:**
+    *   React, React Router, Redux/Zustand (state management), Axios (HTTP client), Styled Components/Tailwind CSS, Socket.io-client.
+*   **Tools:**
+    *   Docker, Git, GitHub Actions.
+
+## 8. Potential Risks & Mitigations
+
+*   **Risk: Complexity of Real-time Updates:**
+    *   **Mitigation:** Start with basic real-time needs (ticket availability, event status). Use a proven library (Socket.io) and design simple, focused channels. Iterate and expand cautiously.
+*   **Risk: Payment Gateway Integration Issues:**
+    *   **Mitigation:** Extensive testing with Stripe's test environment. Implement robust error handling, retry mechanisms, and webhook verification. Monitor payment flows closely.
+*   **Risk: Scalability Bottlenecks (Database/Backend):**
+    *   **Mitigation:** Use a managed database service (AWS RDS). Implement connection pooling, proper indexing, and efficient queries. Design components to be stateless (for easier scaling of backend instances). Start with a well-modularized monolith before considering microservices to reduce initial complexity.
+*   **Risk: Security Vulnerabilities:**
+    *   **Mitigation:** Follow OWASP Top 10 guidelines. Implement strict input validation, use secure password hashing, secure JWT practices, enforce RBAC, regularly update dependencies. Conduct security audits/penetration testing.
+*   **Risk: Data Consistency with Real-time Updates:**
+    *   **Mitigation:** Employ database transactions for critical operations (e.g., ticket purchases). Implement optimistic/pessimistic locking if concurrent modifications are a frequent concern. Ensure WebSocket events accurately reflect committed database changes.
+*   **Risk: Over-engineering early:**
+    *   **Mitigation:** Stick to a well-modularized monolith for the initial phase. Prioritize core features and "simple first" testing over complex architecture patterns that may not be needed immediately.
